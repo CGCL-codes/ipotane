@@ -57,7 +57,7 @@ Ipotane is written in Rust, but all benchmarking scripts are written in Python a
 To deploy and benchmark a testbed of 4 nodes on your local machine, clone the repo and install the python dependencies:
 
 ```
-$ git clone https://github.com/ac-dcz/ipotane
+$ git clone https://github.com/CGCL-codes/ipotane
 $ cd ipotane/benchmark
 $ pip install -r requirements.txt
 ```
@@ -135,9 +135,9 @@ The file [settings.json](https://github.com/ac-dcz/ipotane/blob/main/benchmark/s
 
 **4. Create a testbed**
 
-The AWS instances are orchestrated with [Fabric](http://www.fabfile.org/) from the file [fabfile.py](https://github.com/ac-dcz/ipotane/blob/main/benchmark/fabfile.py) (located in [ipotane/benchmark](https://github.com/ac-dcz/ipotane/blob/main/benchmark)) you can list all possible commands as follows:
+The AWS instances are orchestrated with [Fabric](http://www.fabfile.org/) from the file [fabfile.py](https://github.com/CGCL-codes/ipotane/blob/main/benchmark/fabfile.py) (located in [ipotane/benchmark](https://github.com/CGCL-codes/ipotane/blob/main/benchmark)) you can list all possible commands as follows:
 
-The command `fab create` creates new AWS instances; open [fabfile.py](https://github.com/ac-dcz/ipotane/blob/main/benchmark/fabfile.py) and locate the `create` task:
+The command `fab create` creates new AWS instances; open [fabfile.py](https://github.com/CGCL-codes/ipotane/blob/main/benchmark/fabfile.py) and locate the `create` task:
 
 ```python
 @task
