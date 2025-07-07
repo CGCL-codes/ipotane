@@ -4,3 +4,5 @@ benchmark/results/*
 benchmark/aws/__pycache__/*
 benchmark/benchmark/__pycache__/*
 target/*
+store/.*.
+.vscode/*
