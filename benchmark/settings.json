@@ -1,0 +1,27 @@
+{
+    "key": {
+        "name": "docker-dcz",
+        "path": "/root/.ssh/id_rsa"
+    },
+    "ports": {
+        "smvba": 9000,
+        "consensus": 8000,
+        "mempool": 7000,
+        "front": 6000
+    },
+    "repo": {
+        "name": "chrion",
+        "url": "https://github.com/ac-dcz/chrion",
+        "branch": "main"
+    },
+    "instances": {
+        "type": "m5d.xlarge",
+        "regions": [
+            "us-east-1",
+            "eu-north-1",
+            "ap-southeast-2",
+            "us-west-1",
+            "ap-northeast-1"
+        ]
+    }
+}
