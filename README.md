@@ -130,7 +130,7 @@ ssh-keygen -f ~/.ssh/AWS
 
 **3. Configure the testbed**
 
-The file [settings.json](https://github.com/ac-dcz/ipotane/blob/main/benchmark/settings.json) located in [Ipotane/benchmark](https://github.com/ac-dcz/ipotane/blob/main/benchmark) contains all the configuration parameters of the testbed to deploy.
+The file [settings.json](https://github.com/CGCL-codes/ipotane/blob/main/benchmark/settings.json) located in [Ipotane/benchmark](https://github.com/CGCL-codes/ipotane/blob/main/benchmark) contains all the configuration parameters of the testbed to deploy.
 
 
 **4. Create a testbed**
