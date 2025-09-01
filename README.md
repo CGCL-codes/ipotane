@@ -18,6 +18,8 @@ latency in all situations but suffers from reduced throughput
 in unfavorable situations due to the use of extra Asynchronous
 Binary Agreement (ABA) instances.
 
+To address the above issues, we propose Ipotane, which has been accepted in NDSS'26. The conference version of our paper [PDF version](https://github.com/CGCL-codes/ipotane/blob/main/NDSS2026-Ipotane.pdf) is available in this repository. 
+
 ## Environment Setup
 
 You have two options to set up the development environment:
