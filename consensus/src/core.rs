@@ -492,19 +492,9 @@ impl Core {
         }
 
         //TODO:
-        // 1. 对 height -1 的 block 发送 prepare-opt
-        if self.pes_path && block.height > 1 {
-            self.active_prepare_pahse(
-                block.height - 1,
-                block.qc.clone(), //qc h-1
-                OPT,
-            )
-            .await?;
-        }
-        //2. 在完全乐观情况下 延迟启动
-        if self.is_optmistic() && self.pes_path {
-            self.invoke_fallback(block.height, Some(block.qc.clone()))
-                .await?;
+        // invoke_dba
+        if self.pes_path {
+            self.invoke_dba(block.height, block.qc.clone(), OPT).await?
         }
 
         // The chain should have consecutive round numbers by construction.
@@ -613,8 +603,8 @@ impl Core {
                 self.broadcast_opt_propose(block).await?;
             }
             if self.pes_path && !self.is_optmistic() {
-                self.invoke_fallback(self.height, Some(self.high_qc.clone()))
-                    .await?;
+                self.invoke_dba(self.height, self.high_qc.clone(), OPT)
+                    .await?
             }
         }
         Ok(())
@@ -622,142 +612,11 @@ impl Core {
 
     /***********************two-chain hotstuff*************************/
 
-    /***********************fallback**********************/
-
-    fn fallback_message_filter(&mut self, epoch: SeqNumber, height: SeqNumber) -> bool {
-        if self.height >= height + 2 || self.epoch > epoch {
-            return false;
-        }
-        // if *self.smvba_is_invoke.entry(height).or_insert(false) {
-        //     return false;
-        // }
-        true
-    }
-
-    async fn invoke_fallback(&mut self, height: SeqNumber, qc: Option<QC>) -> ConsensusResult<()> {
-        let block = self.generate_proposal(height, 1, qc, PES).await;
-        self.broadcast_fallback_propose(block).await?;
+    /*********************DBA******************/
+    async fn invoke_dba(&mut self, height: SeqNumber, qc: QC, val: u8) -> ConsensusResult<()> {
+        self.active_prepare_pahse(height, qc, val).await?;
         Ok(())
     }
-
-    async fn broadcast_fallback_propose(&mut self, block: Block) -> ConsensusResult<()> {
-        if *self.smvba_is_invoke.entry(block.height).or_insert(false) {
-            return Ok(());
-        }
-        let message = ConsensusMessage::FBPropose(block.clone());
-        Synchronizer::transmit(
-            message,
-            &self.name,
-            None,
-            &self.network_filter_smvba,
-            &self.committee,
-            PES,
-        )
-        .await?;
-        self.process_fallback_propose(&block).await?;
-        if self.parameters.ddos {
-            sleep(Duration::from_millis(self.parameters.min_block_delay)).await;
-        }
-        Ok(())
-    }
-
-    async fn make_fallback_vote(&mut self, block: &Block) -> Option<HVote> {
-        if block.height + 2 <= self.height {
-            return None;
-        }
-        Some(HVote::new(&block, self.name, PES, self.signature_service.clone()).await)
-    }
-
-    #[async_recursion]
-    async fn handle_fallback_vote(&mut self, vote: &HVote) -> ConsensusResult<()> {
-        ensure!(
-            self.fallback_message_filter(vote.epoch, vote.height),
-            ConsensusError::TimeOutMessage(vote.epoch, vote.height)
-        );
-
-        if self.parameters.exp == 1 {
-            vote.verify(&self.committee)?;
-        }
-
-        if let Some(qc) = self.aggregator.add_fallback_vote(vote.clone())? {
-            self.fallback_high_qc
-                .insert((qc.height, qc.round), Some(qc.clone()));
-            if qc.proposer == self.name {
-                if qc.round < self.fallback_length {
-                    let block = self
-                        .generate_proposal(qc.height, qc.round + 1, Some(qc.clone()), PES)
-                        .await;
-                    self.broadcast_fallback_propose(block).await?;
-                } else if qc.round == self.fallback_length {
-                    //启动prepare
-                    self.active_prepare_pahse(qc.height, qc, PES).await?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn handle_fallback_propose(&mut self, block: &Block) -> ConsensusResult<()> {
-        ensure!(
-            self.fallback_message_filter(block.epoch, block.height),
-            ConsensusError::TimeOutMessage(block.epoch, block.height)
-        );
-
-        if self.parameters.exp == 1 {
-            block.verify(&self.committee)?
-        }
-
-        if block.epoch > self.epoch {
-            let b = block.clone();
-            self.unhandle_message
-                .push_back((b.epoch, ConsensusMessage::FBPropose(b)));
-            return Err(ConsensusError::EpochEnd(self.epoch));
-        }
-
-        // Let's see if we have the block's data. If we don't, the mempool
-        // will get it and then make us resume processing this block.
-        if !self.mempool_driver.verify(block.clone(), FALLBACK).await? {
-            debug!(
-                "Processing of {} suspended: missing payload",
-                block.digest()
-            );
-            return Ok(());
-        }
-
-        self.process_fallback_propose(block).await?;
-        Ok(())
-    }
-
-    async fn process_fallback_propose(&mut self, block: &Block) -> ConsensusResult<()> {
-        ensure!(
-            self.fallback_message_filter(block.epoch, block.height),
-            ConsensusError::TimeOutMessage(block.epoch, block.height)
-        );
-
-        self.store_block(block).await;
-
-        if let Some(vote) = self.make_fallback_vote(block).await {
-            if block.author != self.name {
-                let message = ConsensusMessage::FBVote(vote);
-                Synchronizer::transmit(
-                    message,
-                    &self.name,
-                    Some(&block.author),
-                    &self.network_filter_smvba,
-                    &self.committee,
-                    PES,
-                )
-                .await?;
-            } else {
-                self.handle_fallback_vote(&vote).await?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /***********************fallback**********************/
 
     /*************************Prepare**************************/
 
@@ -858,7 +717,7 @@ impl Core {
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
 
-                    self.invoke_smvba(prepare.height, OPT, signatures, Some(prepare.qc.clone()))
+                    self.invoke_chain_smvba(prepare.height, Some(prepare.qc.clone()), OPT)
                         .await?;
                 }
             }
@@ -879,8 +738,7 @@ impl Core {
                         .or_insert(None)
                     {
                         let _qc = qc.clone();
-                        self.invoke_smvba(prepare.height, PES, signatures, Some(_qc))
-                            .await?;
+                        self.invoke_chain_smvba(prepare.height, _qc, PES).await?;
                     }
                 }
             }
@@ -892,7 +750,159 @@ impl Core {
 
     /*************************Prepare**************************/
 
-    /******************SMVAB********************************************/
+    /***********************chain-smvba**********************/
+
+    async fn invoke_chain_smvba(
+        &mut self,
+        height: SeqNumber,
+        qc: Option<QC>,
+        val: u8,
+    ) -> ConsensusResult<()> {
+        self.invoke_fallback(height, qc, val).await?;
+        Ok(())
+    }
+
+    fn fallback_message_filter(&mut self, epoch: SeqNumber, height: SeqNumber) -> bool {
+        if self.height >= height + 2 || self.epoch > epoch {
+            return false;
+        }
+        // if *self.smvba_is_invoke.entry(height).or_insert(false) {
+        //     return false;
+        // }
+        true
+    }
+
+    async fn invoke_fallback(
+        &mut self,
+        height: SeqNumber,
+        qc: Option<QC>,
+        val: u8,
+    ) -> ConsensusResult<()> {
+        let block = self.generate_proposal(height, 1, qc, PES).await;
+        block.val = val;
+        self.broadcast_fallback_propose(block).await?;
+        Ok(())
+    }
+
+    async fn broadcast_fallback_propose(&mut self, block: Block) -> ConsensusResult<()> {
+        if *self.smvba_is_invoke.entry(block.height).or_insert(false) {
+            return Ok(());
+        }
+        let message = ConsensusMessage::FBPropose(block.clone());
+        Synchronizer::transmit(
+            message,
+            &self.name,
+            None,
+            &self.network_filter_smvba,
+            &self.committee,
+            PES,
+        )
+        .await?;
+        self.process_fallback_propose(&block).await?;
+        if self.parameters.ddos {
+            sleep(Duration::from_millis(self.parameters.min_block_delay)).await;
+        }
+        Ok(())
+    }
+
+    async fn make_fallback_vote(&mut self, block: &Block) -> Option<HVote> {
+        if block.height + 2 <= self.height {
+            return None;
+        }
+        let vote = HVote::new(&block, self.name, PES, self.signature_service.clone()).await;
+        vote.val = block.val;
+        Some(vote)
+    }
+
+    #[async_recursion]
+    async fn handle_fallback_vote(&mut self, vote: &HVote) -> ConsensusResult<()> {
+        ensure!(
+            self.fallback_message_filter(vote.epoch, vote.height),
+            ConsensusError::TimeOutMessage(vote.epoch, vote.height)
+        );
+
+        if self.parameters.exp == 1 {
+            vote.verify(&self.committee)?;
+        }
+
+        if let Some(qc) = self.aggregator.add_fallback_vote(vote.clone())? {
+            self.fallback_high_qc
+                .insert((qc.height, qc.round), Some(qc.clone()));
+            if qc.proposer == self.name {
+                if qc.round < self.fallback_length {
+                    let block = self
+                        .generate_proposal(qc.height, qc.round + 1, Some(qc.clone()), PES)
+                        .await;
+                    self.broadcast_fallback_propose(block).await?;
+                } else if qc.round == self.fallback_length {
+                    self.invoke_smvba(qc.height, vote.val, signatures, Some(qc.clone()))
+                        .await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_fallback_propose(&mut self, block: &Block) -> ConsensusResult<()> {
+        ensure!(
+            self.fallback_message_filter(block.epoch, block.height),
+            ConsensusError::TimeOutMessage(block.epoch, block.height)
+        );
+
+        if self.parameters.exp == 1 {
+            block.verify(&self.committee)?
+        }
+
+        if block.epoch > self.epoch {
+            let b = block.clone();
+            self.unhandle_message
+                .push_back((b.epoch, ConsensusMessage::FBPropose(b)));
+            return Err(ConsensusError::EpochEnd(self.epoch));
+        }
+
+        // Let's see if we have the block's data. If we don't, the mempool
+        // will get it and then make us resume processing this block.
+        if !self.mempool_driver.verify(block.clone(), FALLBACK).await? {
+            debug!(
+                "Processing of {} suspended: missing payload",
+                block.digest()
+            );
+            return Ok(());
+        }
+
+        self.process_fallback_propose(block).await?;
+        Ok(())
+    }
+
+    async fn process_fallback_propose(&mut self, block: &Block) -> ConsensusResult<()> {
+        ensure!(
+            self.fallback_message_filter(block.epoch, block.height),
+            ConsensusError::TimeOutMessage(block.epoch, block.height)
+        );
+
+        self.store_block(block).await;
+
+        if let Some(vote) = self.make_fallback_vote(block).await {
+            if block.author != self.name {
+                let message = ConsensusMessage::FBVote(vote);
+                Synchronizer::transmit(
+                    message,
+                    &self.name,
+                    Some(&block.author),
+                    &self.network_filter_smvba,
+                    &self.committee,
+                    PES,
+                )
+                .await?;
+            } else {
+                self.handle_fallback_vote(&vote).await?;
+            }
+        }
+
+        Ok(())
+    }
+
     async fn smvba_round_advance(
         &mut self,
         height: SeqNumber,
@@ -1082,6 +1092,9 @@ impl Core {
                 .entry((value.block.height, value.round))
                 .or_insert(HashMap::new())
                 .insert(value.block.author, (value.clone(), proof.clone()));
+
+            // Store the block
+            self.store_block(&value.block).await;
         }
 
         //vote
@@ -1583,7 +1596,18 @@ impl Core {
         self.smvba_halt_falg.insert(halt.height, true);
 
         if halt.value.val == OPT {
-            return Ok(());
+            let qc = QC {
+                hash: halt.value.block.digest(),
+                height: halt.height,
+                epoch: halt.epoch,
+                round: halt.round,
+                tag: OPT,
+                proposer: halt.leader,
+                acceptor: halt.leader,
+                votes: Vec::new(),
+            };
+            // algDBA3: 23
+            self.invoke_dba(halt.height + 1, qc, PES).await?;
         }
 
         let block = halt.value.block;
@@ -1632,7 +1656,9 @@ impl Core {
         Ok(())
     }
 
-    /******************SMVAB**************************************************************/
+    /******************chain-smvba**************************************************************/
+
+    /*********************DBA******************/
 
     pub async fn run_epoch(&mut self) {
         let mut epoch = 0u64;
@@ -1687,7 +1713,7 @@ impl Core {
             // self.invoke_smvba(self.height, OPT, Vec::new(), None)
             //     .await
             //     .expect("Failed to send the first PES block");
-            self.invoke_fallback(self.height, Some(self.high_qc.clone()))
+            self.invoke_dba(self.height, self.high_qc.clone(), OPT)
                 .await
                 .expect("Failed to send the first PES block");
         }

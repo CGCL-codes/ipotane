@@ -24,7 +24,8 @@ pub struct Block {
     pub payload: Vec<Digest>,
     pub signature: Signature,
     pub tag: u8,          //fallback
-    pub round: SeqNumber, // fallback
+    pub round: SeqNumber, //fallback
+    pub val: u8,          //dba
 }
 
 impl Block {
@@ -47,6 +48,7 @@ impl Block {
             payload,
             signature: Signature::default(),
             tag,
+            val: OPT,
         };
 
         let signature = signature_service.request_signature(block.digest()).await;
@@ -127,6 +129,7 @@ pub struct HVote {
     pub tag: u8,
     pub author: PublicKey,
     pub signature: Signature,
+    pub val: u8, //dba
 }
 
 impl HVote {
@@ -145,6 +148,7 @@ impl HVote {
             author,
             tag,
             signature: Signature::default(),
+            val: OPT,
         };
         let signature = signature_service.request_signature(vote.digest()).await;
         Self { signature, ..vote }
