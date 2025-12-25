@@ -26,11 +26,11 @@ def local(ctx):
             'max_payload_size': 1_000,
             'min_block_delay': 0,
             'network_delay': 10_000, # message delay on the leaders' proposals during DDoS
-            'ddos': False, # True for DDoS attack on the leader, False otherwise
+            'ddos': True, # True for DDoS attack on the leader, False otherwise
             'random_ddos': False,
             'random_ddos_chance': 10,
             'fallback_length': 2,
-            'exp': 1 # multiplicative factor for exponential fallback
+            'exp': 0 # multiplicative factor for exponential fallback
         },
         'mempool': {
             'queue_capacity': 100_000,

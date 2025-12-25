@@ -711,11 +711,11 @@ impl Core {
                 }
 
                 if (opt_set.len() as u32) == self.committee.random_coin_threshold() {
-                    //启动smvba
-                    let signatures = opt_set
-                        .into_iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
+                    // //启动smvba
+                    // let signatures = opt_set
+                    //     .into_iter()
+                    //     .map(|(k, v)| (k.clone(), v.clone()))
+                    //     .collect();
 
                     self.invoke_chain_smvba(prepare.height, Some(prepare.qc.clone()), OPT)
                         .await?;
@@ -726,10 +726,10 @@ impl Core {
                     return Err(ConsensusError::AuthorityReuseinPrePare(prepare.author));
                 }
                 pes_set.insert(prepare.author, prepare.signature);
-                let signatures = pes_set
-                    .into_iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
+                // let signatures = pes_set
+                //     .into_iter()
+                //     .map(|(k, v)| (k.clone(), v.clone()))
+                //     .collect();
                 if (pes_set.len() as u32) >= self.committee.quorum_threshold() {
                     //启动smvba
                     if let Some(qc) = self
@@ -737,7 +737,7 @@ impl Core {
                         .entry((prepare.height, self.fallback_length))
                         .or_insert(None)
                     {
-                        let _qc = qc.clone();
+                        let _qc = Some(qc.clone());
                         self.invoke_chain_smvba(prepare.height, _qc, PES).await?;
                     }
                 }
@@ -778,7 +778,7 @@ impl Core {
         qc: Option<QC>,
         val: u8,
     ) -> ConsensusResult<()> {
-        let block = self.generate_proposal(height, 1, qc, PES).await;
+        let mut block = self.generate_proposal(height, 1, qc, PES).await;
         block.val = val;
         self.broadcast_fallback_propose(block).await?;
         Ok(())
@@ -809,7 +809,7 @@ impl Core {
         if block.height + 2 <= self.height {
             return None;
         }
-        let vote = HVote::new(&block, self.name, PES, self.signature_service.clone()).await;
+        let mut vote = HVote::new(&block, self.name, PES, self.signature_service.clone()).await;
         vote.val = block.val;
         Some(vote)
     }
@@ -835,7 +835,7 @@ impl Core {
                         .await;
                     self.broadcast_fallback_propose(block).await?;
                 } else if qc.round == self.fallback_length {
-                    self.invoke_smvba(qc.height, vote.val, signatures, Some(qc.clone()))
+                    self.invoke_smvba(qc.height, vote.val, Vec::new(), Some(qc.clone()))
                         .await?;
                 }
             }
@@ -964,14 +964,8 @@ impl Core {
             return Ok(());
         }
         self.smvba_is_invoke.insert(height, true);
-        let block;
-        if val == OPT {
-            block = Block::default();
-        } else {
-            block = self
-                .generate_proposal(height, self.fallback_length + 1, qc, PES)
-                .await;
-        }
+        let block = self.generate_proposal(height, self.fallback_length + 1, qc, PES).await;
+        
         // let block = self
         //     .generate_proposal(height, self.fallback_length + 1, qc, PES)
         //     .await;
@@ -1057,10 +1051,10 @@ impl Core {
             ConsensusError::TimeOutMessage(proof.height, proof.round)
         );
 
-        if self.parameters.exp == 1 {
-            //验证Proof是否正确
-            value.verify(&self.committee, &proof, self.fallback_length)?;
-        }
+        // if self.parameters.exp == 1 {
+        //     //验证Proof是否正确
+        //     value.verify(&self.committee, &proof, self.fallback_length)?;
+        // }
 
         if value.block.epoch > self.epoch {
             self.unhandle_message.push_back((
@@ -1187,9 +1181,9 @@ impl Core {
             ConsensusError::TimeOutMessage(proof.height, proof.round)
         );
 
-        if self.parameters.exp == 1 {
-            value.verify(&self.committee, &proof, self.fallback_length)?;
-        }
+        // if self.parameters.exp == 1 {
+        //     value.verify(&self.committee, &proof, self.fallback_length)?;
+        // }
 
         self.spb_finishs
             .entry((proof.height, proof.round))
